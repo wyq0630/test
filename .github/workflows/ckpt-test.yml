@@ -1,0 +1,30 @@
+name: ckpt-test
+
+# 实测：作业被超时杀掉后，已上传的产物还在不在
+# 设计：timeout-minutes=2；第1步先「干活+传产物」，第2步故意睡死等超时
+on:
+  workflow_dispatch:
+
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: 1. 干活并上传产物（关键：超时前就传上去）
+        run: |
+          date -u +"生成于 %Y-%m-%dT%H:%M:%SZ" > checkpoint.txt
+          echo "这行是在超时之前写的" >> checkpoint.txt
+          for i in 1 2 3; do echo "中间结果 $i" >> checkpoint.txt; done
+          cat checkpoint.txt
+
+      - name: 2. 上传（作为 artifact）
+        uses: actions/upload-artifact@v4
+        with:
+          name: ckpt-result
+          path: checkpoint.txt
+          if-no-files-found: error
+
+      - name: 3. 故意睡过头（预期被 timeout 杀掉）
+        run: |
+          date -u +"睡之前 %Y-%m-%dT%H:%M:%SZ"
+          sleep 400
