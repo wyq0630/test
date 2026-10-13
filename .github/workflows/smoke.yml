@@ -1,0 +1,54 @@
+name: smoke
+
+# 最小验证：证明这条 CI 管道能用
+# 目标：手机上拿到一个 CI 编出来的 aarch64 二进制，并成功运行
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. Runner 信息（证明是 x86-64，不是手机）
+        run: |
+          echo "=== arch ==="
+          uname -m
+          uname -a
+          echo "=== cpu ==="
+          nproc
+          echo "=== mem ==="
+          free -h
+          echo "=== disk ==="
+          df -h /
+
+      - name: 2. 装 aarch64 交叉工具链
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-aarch64-linux-gnu
+          aarch64-linux-gnu-gcc --version | head -1
+
+      - name: 3. 交叉编译 aarch64 静态二进制
+        run: |
+          printf '%s\n' \
+            '#include <stdio.h>' \
+            '#include <sys/utsname.h>' \
+            'int main(void){' \
+            '  struct utsname u;' \
+            '  uname(&u);' \
+            '  printf("hello from CI-built aarch64\n");' \
+            '  printf("machine=%s sysname=%s release=%s\n", u.machine, u.sysname, u.release);' \
+            '  return 0;' \
+            '}' > hello.c
+          cat hello.c
+          aarch64-linux-gnu-gcc -O2 -static -o hello-aarch64 hello.c
+          echo "=== file 结果 ==="
+          file hello-aarch64
+          echo "=== 大小 ==="
+          ls -l hello-aarch64
+
+      - name: 4. 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: hello-aarch64
+          path: hello-aarch64
+          if-no-files-found: error
