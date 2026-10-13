@@ -1,0 +1,65 @@
+name: fetch-build
+
+# 证明：仓库里只需放 workflow（配方），源码可以在运行时从网上取（食材）
+#
+# 用法：触发时可选填 url 参数（默认编 lz4）
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "源码 tarball 的 URL"
+        required: false
+        default: "https://codeload.github.com/lz4/lz4/tar.gz/refs/tags/v1.10.0"
+      name:
+        description: "产物命名"
+        required: false
+        default: "lz4"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 0. 证明仓库里没有源码
+        run: |
+          echo "=== 工作区初始内容（只有 checkout 出来的仓库本体）==="
+          ls -la
+          echo
+          echo "=== 仓库里有 .c 文件吗 ==="
+          find . -name "*.c" -o -name "*.h" | head -5 || echo "  （无）"
+
+      - name: 1. 运行时下载源码
+        run: |
+          curl -sSL -o src.tar.gz "${{ inputs.url }}"
+          ls -l src.tar.gz
+          mkdir -p src && tar xzf src.tar.gz -C src --strip-components=1
+          echo "=== 解出来的内容 ==="
+          ls src | head -20
+          echo "=== 源码文件数 ==="
+          find src -name "*.c" | wc -l
+
+      - name: 2. 用 NDK 交叉编译到 aarch64
+        run: |
+          NDK=$(ls -d /usr/local/lib/android/sdk/ndk/* | head -1)
+          TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          CC="$TC/aarch64-linux-android24-clang"
+          AR="$TC/llvm-ar"
+          echo "NDK: $NDK"
+
+          cd src
+          # 用 NDK 编 lz4（动态库 + 静态库 + 命令行工具）
+          make -j$(nproc) CC="$CC" AR="$AR" \
+            liblz4.so.1.10.0 liblz4.a lz4 2>&1 | tail -15
+
+          echo "=== 产物 ==="
+          ls -l liblz4.so* liblz4.a lz4 2>/dev/null
+          file liblz4.so.1.10.0 lz4 2>/dev/null
+
+      - name: 3. 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.name }}-aarch64
+          path: |
+            src/liblz4.so.1.10.0
+            src/liblz4.a
+            src/lz4
+          if-no-files-found: error
