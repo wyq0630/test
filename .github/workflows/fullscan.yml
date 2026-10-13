@@ -1,0 +1,24 @@
+name: fullscan
+on:
+  workflow_dispatch:
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: 环境
+        run: |
+          echo "CPU $(nproc) 核"; free -h|head -2; df -h /|tail -1
+          sudo apt-get update -qq && sudo apt-get install -y -qq unzip curl
+      - name: 全量扫描
+        run: python3 src-demo/fullscan.py samples-dex.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fullscan-out
+          path: |
+            out/
+            src-*/
+          if-no-files-found: warn
+          compression-level: 9
