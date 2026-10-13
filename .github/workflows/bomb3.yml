@@ -1,0 +1,14 @@
+name: bomb3
+on:
+  workflow_dispatch:
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 src-demo/analyze_bomb3.py samples/bomb-entry.zip 2>&1 | tee r3.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bomb3-report
+          path: r3.txt
