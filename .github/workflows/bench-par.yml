@@ -1,62 +1,63 @@
 name: bench-par
 
-# 对照实验：同一批 dex，三种并行策略的耗时对比
-#   ① 串行（原 fullscan.py 的做法）
-#   ② 单 job 内多进程（纵向跑满 4 核）
-#   ③ 多 job 并行（每个 job 编一个 dex，横向 5 个 job）
+# 对照实验：同一批 5 个 dex（17.8 MB），三种并行策略
+#   ① serial          : 单 job，串行 for
+#   ② parallel_onejob : 单 job，4 路并行（纵向跑满核）
+#   ③ matrix_jobs     : 5 个 job，每 job 一个 dex（横向拉宽）
+#
+# [KEY] jadx 对混淆代码会返回非 0，而 run 步骤默认 set -e -> 必须 || true
 on:
   workflow_dispatch:
 
 jobs:
-  # ───── ① 串行 ─────
   serial:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: 装 jadx
+      - name: 准备
         run: |
           curl -sSL -o /tmp/j.zip https://github.com/skylot/jadx/releases/download/v1.5.1/jadx-1.5.1.zip
           unzip -q -o /tmp/j.zip -d /tmp/jadx && chmod +x /tmp/jadx/bin/jadx
           echo "/tmp/jadx/bin" >> $GITHUB_PATH
-      - name: 解出 dex
-        run: mkdir -p dex && unzip -qo samples-dex.zip -d dex && ls dex
-      - name: 串行反编译（计时）
+          mkdir -p dex && unzip -qo samples-dex.zip -d dex
+      - name: 串行反编译
         run: |
+          export PATH=/tmp/jadx/bin:$PATH
           S=$(date +%s)
           for d in dex/*.dex; do
-            jadx -d "out-$(basename $d)" --no-res -q "$d"
+            jadx -d "out-serial-$(basename $d)" --no-res -q "$d" || true
           done
           E=$(date +%s)
-          echo "SERIAL_TOTAL=$((E-S))" | tee timing.txt
-          echo "java 文件总数: $(find out-* -name '*.java' | wc -l)"
+          N=$(find out-serial-* -name '*.java' 2>/dev/null | wc -l)
+          echo "RESULT serial_seconds=$((E-S)) java=$N"
       - uses: actions/upload-artifact@v4
-        with: {name: timing-serial, path: timing.txt}
+        with: {name: r-serial, path: "*.txt", if-no-files-found: ignore}
 
-  # ───── ② 单 job 多进程 ─────
   parallel_onejob:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: 装 jadx
+      - name: 准备
         run: |
           curl -sSL -o /tmp/j.zip https://github.com/skylot/jadx/releases/download/v1.5.1/jadx-1.5.1.zip
           unzip -q -o /tmp/j.zip -d /tmp/jadx && chmod +x /tmp/jadx/bin/jadx
-          echo "/tmp/jadx/bin" >> $GITHUB_PATH
-      - name: 解出 dex
-        run: mkdir -p dex && unzip -qo samples-dex.zip -d dex
-      - name: 并行反编译（4 路）
+          mkdir -p dex && unzip -qo samples-dex.zip -d dex
+          echo "nproc=$(nproc)"
+      - name: 4 路并行反编译
         run: |
+          export PATH=/tmp/jadx/bin:$PATH
           S=$(date +%s)
-          ls dex/*.dex | xargs -P 4 -I{} sh -c 'jadx -d "out-$(basename {})" --no-res -q "{}"'
+          for d in dex/*.dex; do
+            b=$(basename $d)
+            ( jadx -d "out-par-$b" --no-res -q "$d" || true ) &
+          done
+          wait
           E=$(date +%s)
-          echo "PARALLEL_TOTAL=$((E-S))" | tee timing.txt
-          echo "java 文件总数: $(find out-* -name '*.java' | wc -l)"
-      - uses: actions/upload-artifact@v4
-        with: {name: timing-parallel, path: timing.txt}
+          N=$(find out-par-* -name '*.java' 2>/dev/null | wc -l)
+          echo "RESULT parallel_onejob_seconds=$((E-S)) java=$N"
 
-  # ───── ③ 多 job 并行（每 job 一个 dex，用 matrix）─────
   matrix_jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -66,21 +67,16 @@ jobs:
         dex: [classes.dex, classes2.dex, classes3.dex, classes4.dex, classes5.dex]
     steps:
       - uses: actions/checkout@v4
-      - name: 装 jadx
+      - name: 准备
         run: |
           curl -sSL -o /tmp/j.zip https://github.com/skylot/jadx/releases/download/v1.5.1/jadx-1.5.1.zip
           unzip -q -o /tmp/j.zip -d /tmp/jadx && chmod +x /tmp/jadx/bin/jadx
-          echo "/tmp/jadx/bin" >> $GITHUB_PATH
-      - name: 只解出自己那个 dex
-        run: mkdir -p dex && unzip -qo samples-dex.zip -d dex "${{ matrix.dex }}"
-      - name: 反编译（单线程，靠多 job 并行）
+          mkdir -p dex && unzip -qo samples-dex.zip -d dex "${{ matrix.dex }}"
+      - name: 反编译（本 job 单线程）
         run: |
+          export PATH=/tmp/jadx/bin:$PATH
           S=$(date +%s)
-          jadx -d "out-${{ matrix.dex }}" --no-res -q "dex/${{ matrix.dex }}"
+          jadx -d "out-${{ matrix.dex }}" --no-res -q "dex/${{ matrix.dex }}" || true
           E=$(date +%s)
-          echo "MATRIX_ONE=$((E-S))" | tee timing-${{ matrix.dex }}.txt
-          echo "== ${{ matrix.dex }} 耗时 $((E-S))s, java=$(find out-* -name '*.java'|wc -l)"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: timing-matrix-${{ strategy.job-index }}
-          path: timing-*.txt
+          N=$(find out-${{ matrix.dex }} -name '*.java' 2>/dev/null | wc -l)
+          echo "RESULT ${{ matrix.dex }} seconds=$((E-S)) java=$N"
