@@ -1,0 +1,27 @@
+name: cpucmp2
+on:
+  workflow_dispatch:
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: 完整 CPU 信息
+        run: |
+          grep -m1 "model name" /proc/cpuinfo
+          cat /proc/cpuinfo | grep -m1 "cpu MHz" || true
+          lscpu
+      - name: 用 clang 编译（与手机一致）
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang
+          clang --version | head -1
+          clang -O2 -o cpu_bench_clang src-demo/cpu_bench.c -lpthread
+          gcc  -O2 -o cpu_bench_gcc   src-demo/cpu_bench.c -lpthread
+      - name: clang 版 跑 2 次
+        run: |
+          for i in 1 2; do echo "--- clang 第 $i 次 ---"; ./cpu_bench_clang 4; done
+      - name: gcc 版 跑 2 次
+        run: |
+          for i in 1 2; do echo "--- gcc 第 $i 次 ---"; ./cpu_bench_gcc 4; done
