@@ -18,7 +18,9 @@ jobs:
         with:
           name: fullscan-out
           path: |
-            out/
-            src-*/
+            out/report.txt
+            out/ioc.json
+            out/bin-strings.txt
+            out/manifest-strings.txt
           if-no-files-found: warn
           compression-level: 9
