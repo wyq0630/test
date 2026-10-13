@@ -12,7 +12,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: 硬件指纹
-        run: grep -m1 "model name" /proc/cpuinfo | sed 's/^/CPU: /'
+        run: |
+          grep -m1 "model name" /proc/cpuinfo
       - name: 基线：串行 + jadx 默认4线程
         run: |
           curl -sSL -o /tmp/j.zip https://github.com/skylot/jadx/releases/download/v1.5.1/jadx-1.5.1.zip
@@ -27,7 +28,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - run: grep -m1 "model name" /proc/cpuinfo | sed 's/^/CPU: /'
+      - run: |
+          grep -m1 "model name" /proc/cpuinfo
       - name: 单 job 内并行 5 进程（各默认4线程）
         run: |
           curl -sSL -o /tmp/j.zip https://github.com/skylot/jadx/releases/download/v1.5.1/jadx-1.5.1.zip
@@ -46,7 +48,8 @@ jobs:
         dex: [classes.dex, classes2.dex, classes3.dex, classes4.dex, classes5.dex]
     steps:
       - uses: actions/checkout@v4
-      - run: grep -m1 "model name" /proc/cpuinfo | sed 's/^/CPU: /'
+      - run: |
+          grep -m1 "model name" /proc/cpuinfo
       - name: 每 job 一个 dex
         run: |
           curl -sSL -o /tmp/j.zip https://github.com/skylot/jadx/releases/download/v1.5.1/jadx-1.5.1.zip
@@ -61,7 +64,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - run: grep -m1 "model name" /proc/cpuinfo | sed 's/^/CPU: /'
+      - run: |
+          grep -m1 "model name" /proc/cpuinfo
       - name: 基线重复（测噪声）
         run: |
           curl -sSL -o /tmp/j.zip https://github.com/skylot/jadx/releases/download/v1.5.1/jadx-1.5.1.zip
