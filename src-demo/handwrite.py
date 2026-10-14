@@ -74,7 +74,7 @@ def main():
     ap.add_argument("--side-mm", type=float, default=13.0)
     ap.add_argument("--bottom-mm", type=float, default=13.0)
     # ── 扰动强度 ──
-    ap.add_argument("--level", choices=["normal", "strong"], default="strong")
+    ap.add_argument("--level", choices=["normal", "strong", "extreme"], default="strong")
     ap.add_argument("--pages", type=int, default=0)
     ap.add_argument("--seed", type=int, default=20261014)
     a = ap.parse_args()
@@ -84,6 +84,8 @@ def main():
                     shear=0.03, bold_p=0.06, warp_p=0.10, tilt=0.5),
         strong=dict(rot=4.5, jit=5.0, scale=0.11, drift=2.6, ink=0.28,
                     shear=0.07, bold_p=0.14, warp_p=0.35, tilt=1.4),
+        extreme=dict(rot=7.0, jit=8.5, scale=0.16, drift=3.8, ink=0.40,
+                     shear=0.11, bold_p=0.22, warp_p=0.50, tilt=2.2),
     )[a.level]
 
     rng = random.Random(a.seed)
@@ -110,13 +112,15 @@ def main():
     # [KEY] 顶部占位符要留白：strong 档位抖动大（旋转+位移+缩放），
     # 首行基线若正好等于 top，字形上沿会压进占位符（实测侵入 1.7mm）。
     # -> 首行基线额外下沉一个"抖动余量"（约半个字高）。
-    guard = int(fsize * 0.55)
+    # guard 与扰动强度挂钩：抖动/旋转/缩放都会让字形上沿超出基线
+    guard = int(fsize * 0.55 + mm(cfg["jit"] / MM) + fsize * cfg["scale"])
     top_draw = top + guard
     lpp = max(1, (H - top_draw - bottom) // line_h)
     npx = (len(lines) + lpp - 1) // lpp
     if a.pages:
         npx = min(npx, a.pages)
     print(f"  每行{per_line}字 每页{lpp}行 -> 出 {npx} 页")
+    print(f"  顶部保护带 {guard}px = {guard/MM:.1f}mm（首行从 {a.top_mm+guard/MM:.1f}mm 起写）")
 
     pages, nchar = [], 0
     for pi in range(npx):
