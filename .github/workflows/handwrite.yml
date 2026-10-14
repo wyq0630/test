@@ -1,45 +1,52 @@
 name: handwrite
 
-# 用字体渲染 A4 手写页（字体在 CI 侧下载，本机不下 15MB）
+# 字体渲染 A4 手写页（无 AI 标识 —— 字体排版不属 AI 生成内容）
 on:
   workflow_dispatch:
+    inputs:
+      pages:
+        description: "只出前 N 页（0=全部）"
+        default: "2"
+      seed:
+        description: "随机种子（换一个就换一套扰动）"
+        default: "20261014"
 
 jobs:
   render:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
-      - name: 装依赖
-        run: |
-          pip install --quiet pillow numpy
+      - name: 依赖
+        run: pip install --quiet pillow numpy
 
-      - name: 下字体（Yozai 手写 + 霞鹜文楷 对照）
+      - name: 下字体
         run: |
           mkdir -p fonts
-          curl -sSL -H "Accept: application/octet-stream" -o fonts/Yozai.ttf \
-            "https://api.github.com/repos/lxgw/yozai-font/releases/assets/292424918"
-          curl -sSL -H "Accept: application/octet-stream" -o fonts/WenKai.ttf \
-            "https://api.github.com/repos/lxgw/LxgwWenKai/releases/assets/375817996"
+          dl() { curl -sSL -H "Accept: application/octet-stream" -o "fonts/$2" \
+                 "https://api.github.com/repos/$1/releases/assets/$3"; }
+          dl lxgw/yozai-font       Yozai.ttf      292424918
+          dl lxgw/LxgwWenKai       WenKai.ttf     375817996
+          dl lxgw/LxgwNeoXiHei     NeoXiHei.ttf   522452095
           ls -la fonts/
 
-      - name: 渲染 Yozai（手写感）
+      - name: 渲染（3 种字体 × 前 N 页）
         run: |
-          python3 src-demo/handwrite.py --font fonts/Yozai.ttf \
-            --text src-demo/content.txt --out out-yozai --seed 7
+          N="${{ inputs.pages }}"
+          for f in Yozai WenKai NeoXiHei; do
+            echo "=== $f ==="
+            python3 src-demo/handwrite.py --font fonts/$f.ttf \
+              --text src-demo/content.txt --out out-$f \
+              --pages "$N" --seed "${{ inputs.seed }}"
+          done
 
-      - name: 渲染 WenKai（楷体）
-        run: |
-          python3 src-demo/handwrite.py --font fonts/WenKai.ttf \
-            --text src-demo/content.txt --out out-wenkai --seed 7
-
-      - name: 上传
+      - name: 上传样张
         uses: actions/upload-artifact@v4
         with:
-          name: handwrite-pdf
+          name: handwrite-sample
           path: |
-            out-yozai/handwrite.pdf
-            out-wenkai/handwrite.pdf
+            out-*/page-*.png
+            out-*/handwrite.pdf
           if-no-files-found: error
           compression-level: 9
