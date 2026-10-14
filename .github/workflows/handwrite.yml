@@ -34,13 +34,12 @@ jobs:
         run: |
           set -e
           N="${{ inputs.pages }}"
-          for f in MaShanZheng LongCang ZhiMangXing LiuJianMaoCao ZCOOLXiaoWei ZCOOLQingKe; do
+          for f in ZhiMangXing MaShanZheng LongCang LiuJianMaoCao; do
             echo "=== $f ==="
             python3 src-demo/handwrite.py --font fonts/$f.ttf \
               --text src-demo/content.txt --out out-$f \
               --pages "$N" --seed "${{ inputs.seed }}" \
-              --size-mm 8.6 --pitch-mm 8.6 --line-mm 11.6 \
-              --rot 3.2 --jit 3.0 --scale 0.07 --drift 1.8
+              --size-mm 8.6 --pitch-mm 8.8 --line-mm 11.6 --level strong
           done
 
       - name: 小预览
