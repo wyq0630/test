@@ -1,11 +1,11 @@
 name: handwrite
 
-# 字体渲染 A4 手写页（无 AI 标识 —— 字体排版不属 AI 生成内容）
+# 硬笔（志莽行）× 三档扰动对比
 on:
   workflow_dispatch:
     inputs:
-      pages:  { description: "前 N 页（0=全部）", default: "1" }
-      seed:   { description: "随机种子", default: "20261014" }
+      pages: { description: "前 N 页", default: "1" }
+      seed:  { description: "随机种子", default: "20261014" }
 
 jobs:
   render:
@@ -15,32 +15,32 @@ jobs:
       - uses: actions/checkout@v4
       - run: pip install --quiet pillow numpy
 
-      - name: 下字体（Google Fonts 直链，体积小、真手写源）
+      - name: 下字体
         run: |
           set -e
           mkdir -p fonts
           B=https://raw.githubusercontent.com/google/fonts/main/ofl
-          get() { curl -fSL --retry 3 -o "fonts/$2" "$1"; }
-          get $B/mashanzheng/MaShanZheng-Regular.ttf        MaShanZheng.ttf
-          get $B/longcang/LongCang-Regular.ttf              LongCang.ttf
-          get $B/zhimangxing/ZhiMangXing-Regular.ttf        ZhiMangXing.ttf
-          get $B/liujianmaocao/LiuJianMaoCao-Regular.ttf    LiuJianMaoCao.ttf
-          get $B/zcoolxiaowei/ZCOOLXiaoWei-Regular.ttf      ZCOOLXiaoWei.ttf
-          get $B/zcoolqingkehuangyou/ZCOOLQingKeHuangYou-Regular.ttf ZCOOLQingKe.ttf
+          curl -fSL --retry 3 -o fonts/ZhiMangXing.ttf $B/zhimangxing/ZhiMangXing-Regular.ttf
+          curl -fSL --retry 3 -o fonts/MaShanZheng.ttf $B/mashanzheng/MaShanZheng-Regular.ttf
           file fonts/*.ttf
-          ls -la fonts/
 
-      - name: 渲染 6 种字体
+      - name: 三档扰动（硬笔志莽行）
         run: |
           set -e
-          N="${{ inputs.pages }}"
-          for f in ZhiMangXing MaShanZheng LongCang LiuJianMaoCao; do
-            echo "=== $f ==="
-            python3 src-demo/handwrite.py --font fonts/$f.ttf \
-              --text src-demo/content.txt --out out-$f \
-              --pages "$N" --seed "${{ inputs.seed }}" \
-              --size-mm 8.6 --pitch-mm 8.8 --line-mm 11.6 --level strong
+          for L in normal strong extreme; do
+            echo "=== ZhiMangXing / $L ==="
+            python3 src-demo/handwrite.py --font fonts/ZhiMangXing.ttf \
+              --text src-demo/content.txt --out out-ZMX-$L \
+              --pages "${{ inputs.pages }}" --seed "${{ inputs.seed }}" \
+              --size-mm 8.6 --pitch-mm 8.8 --line-mm 11.6 --level $L
           done
+
+      - name: 高扰动对照（马善政 extreme）
+        run: |
+          python3 src-demo/handwrite.py --font fonts/MaShanZheng.ttf \
+            --text src-demo/content.txt --out out-MSZ-extreme \
+            --pages "${{ inputs.pages }}" --seed "${{ inputs.seed }}" \
+            --size-mm 8.6 --pitch-mm 8.8 --line-mm 11.6 --level extreme
 
       - name: 小预览
         run: |
@@ -52,20 +52,11 @@ jobs:
               tag = p.split("/")[0].replace("out-", "")
               im = Image.open(p); w, h = im.size
               im.resize((600, int(600*h/w)), Image.LANCZOS).save(f"preview/{tag}-full.jpg", quality=80)
-              crop = im.crop((0, int(h*0.12), w, int(h*0.30)))
+              crop = im.crop((0, int(h*0.115), w, int(h*0.30)))
               cw, ch = crop.size
-              crop.resize((820, int(820*ch/cw)), Image.LANCZOS).save(f"preview/{tag}-zoom.jpg", quality=88)
-          tot = sum(os.path.getsize("preview/"+f) for f in os.listdir("preview"))
-          print(f"  preview 共 {tot/1024/1024:.2f} MB, {len(os.listdir('preview'))} 个")
+              crop.resize((860, int(860*ch/cw)), Image.LANCZOS).save(f"preview/{tag}-zoom.jpg", quality=88)
+          print("  ", sorted(os.listdir("preview")))
           EOF
 
       - uses: actions/upload-artifact@v4
-        with:
-          name: preview
-          path: preview/*.jpg
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: full-pdf
-          path: out-*/handwrite.pdf
-          if-no-files-found: error
+        with: {name: preview, path: preview/*.jpg, if-no-files-found: error}
