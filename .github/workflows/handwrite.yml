@@ -49,7 +49,36 @@ jobs:
               --pages "$N" --seed "${{ inputs.seed }}"
           done
 
-      - name: 上传样张
+      - name: 生成小预览（供手机快速查看）
+        run: |
+          python3 - <<'EOF'
+          from PIL import Image
+          import glob, os
+          os.makedirs("preview", exist_ok=True)
+          for p in sorted(glob.glob("out-*/page-*.png")):
+              tag = p.split("/")[0].replace("out-", "")
+              im = Image.open(p)
+              # 裁顶部一半 + 整页缩略
+              w, h = im.size
+              im.resize((620, int(620 * h / w)), Image.LANCZOS).save(
+                  f"preview/{tag}-{os.path.basename(p)[:-4]}-small.jpg", quality=82)
+              # 顶部 40% 局部放大（看笔迹细节）
+              crop = im.crop((0, int(h*0.10), w, int(h*0.32)))
+              cw, ch = crop.size
+              crop.resize((760, int(760*ch/cw)), Image.LANCZOS).save(
+                  f"preview/{tag}-{os.path.basename(p)[:-4]}-zoom.jpg", quality=88)
+          for f in sorted(os.listdir("preview")):
+              print(f, os.path.getsize("preview/"+f), "B")
+          EOF
+
+      - name: 上传小预览（小文件，手机秒下）
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview
+          path: preview/*.jpg
+          if-no-files-found: error
+
+      - name: 上传完整样张
         uses: actions/upload-artifact@v4
         with:
           name: handwrite-sample
