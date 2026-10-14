@@ -4,12 +4,8 @@ name: handwrite
 on:
   workflow_dispatch:
     inputs:
-      pages:
-        description: "只出前 N 页（0=全部）"
-        default: "2"
-      seed:
-        description: "随机种子（换一个就换一套扰动）"
-        default: "20261014"
+      pages:  { description: "前 N 页（0=全部）", default: "1" }
+      seed:   { description: "随机种子", default: "20261014" }
 
 jobs:
   render:
@@ -17,39 +13,37 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - run: pip install --quiet pillow numpy
 
-      - name: 依赖
-        run: pip install --quiet pillow numpy
-
-      - name: 下字体（直链，不走 API —— runner 共享 IP 会撞匿名限流）
+      - name: 下字体（Google Fonts 直链，体积小、真手写源）
         run: |
           set -e
           mkdir -p fonts
-          B=https://github.com
-          get() {  # get <url> <out> <最小字节数>
-            curl -fSL --retry 3 --retry-delay 2 -o "fonts/$2" "$1"
-            sz=$(stat -c %s "fonts/$2")
-            echo "  $2 -> $sz B"
-            [ "$sz" -ge "$3" ] || { echo "!! $2 太小，可能下到错误页"; return 1; }
-          }
-          get $B/lxgw/yozai-font/releases/download/v0.868/Yozai-Medium.ttf        Yozai.ttf    10000000
-          get $B/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKai-Regular.ttf  WenKai.ttf   20000000
-          get $B/lxgw/LxgwNeoXiHei/releases/download/v1.305/LXGWNeoXiHei.ttf      NeoXiHei.ttf  5000000
-          echo "--- 文件类型校验 ---"
+          B=https://raw.githubusercontent.com/google/fonts/main/ofl
+          get() { curl -fSL --retry 3 -o "fonts/$2" "$1"; }
+          get $B/mashanzheng/MaShanZheng-Regular.ttf        MaShanZheng.ttf
+          get $B/longcang/LongCang-Regular.ttf              LongCang.ttf
+          get $B/zhimangxing/ZhiMangXing-Regular.ttf        ZhiMangXing.ttf
+          get $B/liujianmaocao/LiuJianMaoCao-Regular.ttf    LiuJianMaoCao.ttf
+          get $B/zcoolxiaowei/ZCOOLXiaoWei-Regular.ttf      ZCOOLXiaoWei.ttf
+          get $B/zcoolqingkehuangyou/ZCOOLQingKeHuangYou-Regular.ttf ZCOOLQingKe.ttf
           file fonts/*.ttf
           ls -la fonts/
 
-      - name: 渲染（3 种字体 × 前 N 页）
+      - name: 渲染 6 种字体
         run: |
+          set -e
           N="${{ inputs.pages }}"
-          for f in Yozai WenKai NeoXiHei; do
+          for f in MaShanZheng LongCang ZhiMangXing LiuJianMaoCao ZCOOLXiaoWei ZCOOLQingKe; do
             echo "=== $f ==="
             python3 src-demo/handwrite.py --font fonts/$f.ttf \
               --text src-demo/content.txt --out out-$f \
-              --pages "$N" --seed "${{ inputs.seed }}"
+              --pages "$N" --seed "${{ inputs.seed }}" \
+              --size-mm 8.6 --pitch-mm 8.6 --line-mm 11.6 \
+              --rot 3.2 --jit 3.0 --scale 0.07 --drift 1.8
           done
 
-      - name: 生成小预览（供手机快速查看）
+      - name: 小预览
         run: |
           python3 - <<'EOF'
           from PIL import Image
@@ -57,33 +51,22 @@ jobs:
           os.makedirs("preview", exist_ok=True)
           for p in sorted(glob.glob("out-*/page-*.png")):
               tag = p.split("/")[0].replace("out-", "")
-              im = Image.open(p)
-              # 裁顶部一半 + 整页缩略
-              w, h = im.size
-              im.resize((620, int(620 * h / w)), Image.LANCZOS).save(
-                  f"preview/{tag}-{os.path.basename(p)[:-4]}-small.jpg", quality=82)
-              # 顶部 40% 局部放大（看笔迹细节）
-              crop = im.crop((0, int(h*0.10), w, int(h*0.32)))
+              im = Image.open(p); w, h = im.size
+              im.resize((600, int(600*h/w)), Image.LANCZOS).save(f"preview/{tag}-full.jpg", quality=80)
+              crop = im.crop((0, int(h*0.12), w, int(h*0.30)))
               cw, ch = crop.size
-              crop.resize((760, int(760*ch/cw)), Image.LANCZOS).save(
-                  f"preview/{tag}-{os.path.basename(p)[:-4]}-zoom.jpg", quality=88)
-          for f in sorted(os.listdir("preview")):
-              print(f, os.path.getsize("preview/"+f), "B")
+              crop.resize((820, int(820*ch/cw)), Image.LANCZOS).save(f"preview/{tag}-zoom.jpg", quality=88)
+          tot = sum(os.path.getsize("preview/"+f) for f in os.listdir("preview"))
+          print(f"  preview 共 {tot/1024/1024:.2f} MB, {len(os.listdir('preview'))} 个")
           EOF
 
-      - name: 上传小预览（小文件，手机秒下）
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: preview
           path: preview/*.jpg
           if-no-files-found: error
-
-      - name: 上传完整样张
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: handwrite-sample
-          path: |
-            out-*/page-*.png
-            out-*/handwrite.pdf
+          name: full-pdf
+          path: out-*/handwrite.pdf
           if-no-files-found: error
-          compression-level: 9
