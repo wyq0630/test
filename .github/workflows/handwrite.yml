@@ -21,14 +21,22 @@ jobs:
       - name: 依赖
         run: pip install --quiet pillow numpy
 
-      - name: 下字体
+      - name: 下字体（直链，不走 API —— runner 共享 IP 会撞匿名限流）
         run: |
+          set -e
           mkdir -p fonts
-          dl() { curl -sSL -H "Accept: application/octet-stream" -o "fonts/$2" \
-                 "https://api.github.com/repos/$1/releases/assets/$3"; }
-          dl lxgw/yozai-font       Yozai.ttf      292424918
-          dl lxgw/LxgwWenKai       WenKai.ttf     375817996
-          dl lxgw/LxgwNeoXiHei     NeoXiHei.ttf   522452095
+          B=https://github.com
+          get() {  # get <url> <out> <最小字节数>
+            curl -fSL --retry 3 --retry-delay 2 -o "fonts/$2" "$1"
+            sz=$(stat -c %s "fonts/$2")
+            echo "  $2 -> $sz B"
+            [ "$sz" -ge "$3" ] || { echo "!! $2 太小，可能下到错误页"; return 1; }
+          }
+          get $B/lxgw/yozai-font/releases/download/v0.868/Yozai-Medium.ttf        Yozai.ttf    10000000
+          get $B/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKai-Regular.ttf  WenKai.ttf   20000000
+          get $B/lxgw/LxgwNeoXiHei/releases/download/v1.305/LXGWNeoXiHei.ttf      NeoXiHei.ttf  5000000
+          echo "--- 文件类型校验 ---"
+          file fonts/*.ttf
           ls -la fonts/
 
       - name: 渲染（3 种字体 × 前 N 页）
