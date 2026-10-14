@@ -46,7 +46,7 @@ def main():
     W, H = mm(210), mm(297)
     top, side, bottom = mm(a.top_mm), mm(a.side_mm), mm(a.bottom_mm)
     line_h, pitch, fsize = mm(a.line_mm), mm(a.pitch_mm), mm(a.size_mm)
-    drift_px = mm(a.drift_mm)
+    drift_px = mm(a.drift)
 
     font = ImageFont.truetype(a.font, fsize)
     fname = os.path.basename(a.font)
