@@ -1,12 +1,11 @@
 name: np2kai-9821
 
 # 云端交叉编译 NP2kai（Android arm64），带 9821 机型补丁
-# 用 sdl/Makefile.libretro + NDK clang（该 Makefile 没有 android 分支，靠 CC/CXX 覆盖）
 on:
   workflow_dispatch:
     inputs:
       patch:
-        description: '打 9821 补丁 (1=打, 0=原版对照)'
+        description: 'pain 9821 patch (1=yes 0=no)'
         required: false
         default: '1'
 
@@ -16,108 +15,71 @@ jobs:
     timeout-minutes: 90
 
     steps:
-      - name: 环境
+      - name: info
         run: |
-          echo "=== CPU ==="; nproc
-          echo "=== 磁盘 ==="; df -h / | tail -1
+          echo "=== cpu ==="; nproc
+          df -h / | tail -1
 
-      - name: 装 NDK
+      - name: install ndk
         run: |
           set -e
           for V in r29 r27c r26d; do
             URL="https://dl.google.com/android/repository/android-ndk-${V}-linux.zip"
-            echo "尝试 $V"
+            echo "try $V"
             if curl -sSL --retry 2 --max-time 600 -o /tmp/ndk.zip "$URL"; then
               if unzip -t /tmp/ndk.zip >/dev/null 2>&1; then
-                echo "✓ $V 下载成功"; break
+                echo "OK $V"; break
               fi
             fi
             rm -f /tmp/ndk.zip
           done
-          [ -f /tmp/ndk.zip ] || { echo "NDK 全部下载失败"; exit 1; }
+          [ -f /tmp/ndk.zip ] || { echo "ndk download failed"; exit 1; }
           unzip -q /tmp/ndk.zip -d /opt
           NDK_DIR=$(ls -d /opt/android-ndk-* | head -1)
           echo "NDK=$NDK_DIR" >> $GITHUB_ENV
-          echo "NDK 在 $NDK_DIR"
-          ls "$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin/" | grep -E 'aarch64.*24-clang' | head -3
+          ls "$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin/" | grep -E 'aarch64-linux-android24-clang$' | head -2
 
-      - name: 拉源码
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: fetch source
         run: |
           set -e
-          curl -sSL --retry 3 -o /tmp/np2k.zip \
-            "https://github.com/libretro/NP2kai/archive/refs/heads/master.zip"
+          curl -sSL --retry 3 -o /tmp/np2k.zip "https://github.com/libretro/NP2kai/archive/refs/heads/master.zip"
           ls -lh /tmp/np2k.zip
           unzip -q /tmp/np2k.zip -d /tmp/src
           SRC=$(ls -d /tmp/src/NP2kai-* | head -1)
           echo "SRC=$SRC" >> $GITHUB_ENV
-          echo "源码在 $SRC"
           ls "$SRC/sdl/" | head -5
 
-      - name: 打补丁
+      - name: apply patch
         if: ${{ github.event.inputs.patch == '1' }}
         run: |
           set -e
           cd $SRC
           cp pccore.c pccore.c.orig
-          python3 - <<'PY'
-import os, sys
-p = os.environ['SRC'] + '/pccore.c'
-s = open(p, encoding='utf-8', errors='replace').read()
-old = """	model = PCMODEL_VX;
-	if (!milstr_cmp(pConfig->model, str_VM)) {
-		model = PCMODEL_VM;
-	}
-	else if (!milstr_cmp(pConfig->model, str_EPSON)) {
-		model = PCMODEL_EPSON | PCMODEL_VM;
-	}
-	pccore.model = model;"""
-new = """	model = PCMODEL_VX;
-	if (!milstr_cmp(pConfig->model, str_VM)) {
-		model = PCMODEL_VM;
-	}
-	else if (!milstr_cmp(pConfig->model, str_EPSON)) {
-		model = PCMODEL_EPSON | PCMODEL_VM;
-	}
-#if defined(SUPPORT_PC9821)
-	/* 9821 机型：上游 PCMODEL_PC9821 定义了但从未被赋值 */
-	else if (!milstr_cmp(pConfig->model, OEMTEXT("9821"))) {
-		model = (UINT8)(PCMODEL_PC9821 | PCMODEL_VX);
-	}
-#endif
-	pccore.model = model;"""
-if old not in s:
-    print("!! 未找到目标代码"); sys.exit(1)
-open(p, 'w', encoding='utf-8').write(s.replace(old, new, 1))
-print("✓ pccore.c 已打补丁")
-PY
-          grep -n -A3 '9821 机型' pccore.c | head -6
+          python3 "$GITHUB_WORKSPACE/ci/patch-9821.py" "$SRC/pccore.c"
+          echo "=== verify ==="
+          grep -n -A3 'PCMODEL_PC9821 | PCMODEL_VX' pccore.c | head -6
 
-      - name: 编译（Makefile.libretro + NDK clang）
+      - name: build
         run: |
           set -e
           cd $SRC
           BIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin
-          export CC="$BIN/aarch64-linux-android24-clang"
-          export CXX="$BIN/aarch64-linux-android24-clang++"
-          export AR="$BIN/llvm-ar"
-          export RANLIB="$BIN/llvm-ranlib"
-          export STRIP="$BIN/llvm-strip"
-          # 确认工具存在
-          $CC --version | head -2
-          # -fPIC -shared 由 Makefile 处理；给 android 补上必要的 define
+          CC1=$BIN/aarch64-linux-android24-clang
+          CXX1=$BIN/aarch64-linux-android24-clang++
+          $CC1 --version | head -2
           make -C sdl -f Makefile.libretro \
             platform=unix \
-            ARCH= \
-            CC="$CC" CXX="$CXX" AR="$AR" \
-            -j$(nproc) 2>&1 | tail -50
-          echo "=== 产物 ==="
-          find . -name '*.so' -newer pccore.c -exec ls -lh {} \; 2>/dev/null | head -5
-          ls -lh sdl/*.so 2>/dev/null || find . -name 'np2kai_libretro.so' -ls
+            CC="$CC1" CXX="$CXX1" AR="$BIN/llvm-ar" \
+            -j$(nproc) 2>&1 | tail -60
+          echo "=== artifact ==="
+          find "$SRC" -name '*_libretro.so' -exec ls -lh {} \; 2>/dev/null
 
-      - name: 上传
+      - name: upload
         uses: actions/upload-artifact@v4
         with:
           name: np2kai-android-arm64
-          path: |
-            **/*.so
-          if-no-files-found: warn
+          path: '**/*_libretro.so'
+          if-no-files-found: error
