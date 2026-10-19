@@ -77,10 +77,13 @@ jobs:
             -j$(nproc) 2>&1 | tail -60
           echo "=== artifact ==="
           find "$SRC" -name '*_libretro.so' -exec ls -lh {} \; 2>/dev/null
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          cp "$SRC/sdl/np2kai_libretro.so" "$GITHUB_WORKSPACE/out/"
+          ls -lh "$GITHUB_WORKSPACE/out/"
 
       - name: upload
         uses: actions/upload-artifact@v4
         with:
           name: np2kai-android-arm64
-          path: '**/*_libretro.so'
+          path: out/*.so
           if-no-files-found: error
