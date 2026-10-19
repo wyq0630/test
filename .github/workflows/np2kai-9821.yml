@@ -73,7 +73,7 @@ jobs:
           make -C sdl -f Makefile.libretro \
             platform=unix \
             CC="$CC1" CXX="$CXX1" AR="$BIN/llvm-ar" \
-            LDFLAGS="-lm" \
+            LDFLAGS="-lm -static-libstdc++" \
             -j$(nproc) 2>&1 | tail -60
           echo "=== artifact ==="
           find "$SRC" -name '*_libretro.so' -exec ls -lh {} \; 2>/dev/null
